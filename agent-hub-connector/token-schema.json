@@ -1,0 +1,26 @@
+{
+  "title": "Agent Hub 服务对接配置",
+  "title_en": "Agent Hub Service Configuration",
+  "description": "填写 Agent Hub 服务的访问地址和 API Key 以启用多 AI 代码评审。凭证仅存储在本机，不会上传到云端。",
+  "description_en": "Enter the Agent Hub service URL and API Key to enable multi-AI code review. Credentials are stored locally only.",
+  "fields": [
+    {
+      "key": "API_KEY",
+      "label": "API Key",
+      "label_en": "API Key",
+      "type": "password",
+      "required": true,
+      "placeholder": "服务端环境变量 AGENT_HUB_API_KEY 的值",
+      "description": "用于访问 Agent Hub MCP 端点的 Bearer Token。"
+    },
+    {
+      "key": "API_BASE_URL",
+      "label": "服务地址",
+      "label_en": "Service Base URL",
+      "type": "text",
+      "required": true,
+      "defaultValue": "https://your-agent-hub.example.com",
+      "description": "Agent Hub 服务的基础地址，不含路径；私有部署可改为内网地址。"
+    }
+  ]
+}

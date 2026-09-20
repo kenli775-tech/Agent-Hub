@@ -1,0 +1,29 @@
+{
+  "name": "Agent Hub 多AI协作",
+  "name_zh": "Agent Hub 多AI协作",
+  "name_en": "Agent Hub Multi-AI Collab",
+  "description": "Agent Hub 多 AI 协作平台：代码评审（多家大模型并行评审 diff 并汇总裁决）与方案共创（Kimi/MiniMax/DeepSeek 三家出方案、交叉互评、人工拍板后产出 AI 编写定稿、可迭代）。",
+  "description_zh": "Agent Hub 多 AI 协作平台，两大能力：①代码评审——把代码 diff 提交给 Kimi/MiniMax/DeepSeek 等多家大模型并行评审并自动汇总裁决，返回 approve / comment / request_changes 结论；②方案共创——发布想法后四家 AI 独立出方案、互相评审，用户拍板选定后由产出 AI 编写定稿，并可发起多轮迭代优化。",
+  "description_en": "Agent Hub multi-AI collaboration platform with two modes: ①Code Review — submit a diff, multiple LLMs review in parallel and a consensus verdict (approve / comment / request_changes) is returned; ②Proposal Collab — four AIs (Kimi/MiniMax/DeepSeek/Qwen) each draft a plan, cross-review each other, then the user picks one and the producing AI writes the final plan, with support for iterative refinement rounds.",
+  "source": "agent-hub-reviewer",
+  "type": "mcp",
+  "version": "1.2.0",
+  "auth_mode": "token",
+  "minWorkbuddyVersion": "4.23.0",
+  "examples_zh": [
+    "帮我评审这段代码改动有没有问题",
+    "把这个 diff 提交给多家 AI 评审并告诉我结论",
+    "我想做一个团队周报自动化工具，让三家 AI 各出一个方案并互评",
+    "查询方案共创任务 pp_20260919_xxx 的最新进度",
+    "选定 kimi 的方案并让它补充数据安全设计后写定稿",
+    "对已定稿的方案发起一轮迭代，重点压缩实施成本"
+  ],
+  "examples_en": [
+    "Review this code diff for potential issues",
+    "Submit this diff to multiple AI reviewers and give me the verdict",
+    "I want to build an automated weekly report tool — have three AIs each propose a plan and cross-review them",
+    "Check the progress of proposal task pp_20260919_xxx",
+    "Pick Kimi's plan and have it write the final version with extra data-security requirements",
+    "Start an iteration round on the finalized plan, focusing on cutting implementation cost"
+  ]
+}

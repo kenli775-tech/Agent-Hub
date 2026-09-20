@@ -1,0 +1,17 @@
+# 密钥与本地配置（绝不入库）
+.env
+
+# Python 运行时
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 运行时产物
+agent_hub.db
+agent-hub-connector.zip
+
+# 日志与临时文件
+*.log
+.DS_Store
+Thumbs.db
