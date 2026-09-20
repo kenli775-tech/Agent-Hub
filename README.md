@@ -20,6 +20,11 @@ python -m uvicorn agent_hub_platform:app --host 127.0.0.1 --port 8765
 > 鉴权保护（中间件 2026-09-20 已提级到 app 级）。裸绑到局域网等于把这两个接口敞开。
 > 要远端部署：先设 `AGENT_HUB_API_KEY`，再放到反向代理/HTTPS 之后，并同步更新
 > `agent-hub-connector/mcp.json`。
+>
+> **部署形态限制（2026-09-20 补充）**：`/compare/run` 的幂等去重（`_INFLIGHT`）是
+> **进程内**登记——单 worker（默认）下后到请求会等首个完成、返回同一 run；多 worker
+> 部署时这一层失效（在途重复会各跑一遍），只有完成后的 `idem_key` 库查去重仍然有效。
+> 若将来要多 worker，需把 `_INFLIGHT` 换成跨进程锁（如 DB 唯一约束 + 轮询）。
 
 打开：<http://localhost:8765/ui>（或直接双击 `start_agent_hub.bat`，自动开浏览器）
 
