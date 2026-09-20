@@ -69,7 +69,7 @@ def init_db() -> None:
             run_id TEXT PRIMARY KEY,
             provider TEXT, repo TEXT, mr_id TEXT, title TEXT,
             status TEXT, state_json TEXT,
-            created_at TEXT, updated_at TEXT)""")
+            created_at TEXT, updated_at TEXT, diff_sha1 TEXT)""")
         c.execute("""CREATE TABLE IF NOT EXISTS audit (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT, actor TEXT, action TEXT, comment TEXT,
@@ -100,14 +100,15 @@ def save_run(state: dict) -> None:
         c.execute(
             "INSERT OR REPLACE INTO runs "
             "(run_id, provider, repo, mr_id, title, status, state_json, "
-            " created_at, updated_at, idem_key) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " created_at, updated_at, idem_key, diff_sha1) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (state["run_id"], event.get("provider", "manual"),
              event.get("repo", ""), event.get("mr_id", ""),
              event.get("title", ""),
              status,
              json.dumps(state, ensure_ascii=False), now, now,
-             state.get("idempotency_key")),
+             state.get("idempotency_key"),
+             (state.get("inputs") or {}).get("diff_sha1")),
         )
 
 

@@ -12,6 +12,7 @@ Agent Hub 编排层：适配器协议 + webhook 解析 + Compare 编排。
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -251,12 +252,22 @@ def run_compare_hub(
         raise RuntimeError(f"所有 Agent 评审失败: {errors}")
 
     result = run_compare(reviews)
+    # 被审输入留档（2026-09-20 P0-2）：此前 state 只存"结论"，不含 diff/context，
+    # 事后无法回答"这个 blocker 是针对哪份 diff 提的"，人工裁决也无从回溯。
+    # 存 diff 全文 + sha1：sha1 用于判断两次 run 是否同一输入（也便于与幂等键互证）。
+    diff_bytes = (diff_text or "").encode("utf-8")
     state = {
         "run_id": run_id,
         "task_type": "code_review_compare",
         "event": event.to_dict(),
         "agent_errors": errors,
         **result,
+        "inputs": {
+            "diff": diff_text,
+            "context": context_text,
+            "diff_sha1": hashlib.sha1(diff_bytes).hexdigest(),
+            "diff_bytes": len(diff_bytes),
+        },
         "human_decision": None,
         "post_status": None,
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
