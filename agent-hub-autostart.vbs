@@ -2,7 +2,7 @@
 ' 停止方法：运行 stop_agent_hub.bat，或手动创建 agent-hub\.norestart 后结束进程
 Set shell = CreateObject("WScript.Shell")
 Set fso  = CreateObject("Scripting.FileSystemObject")
-hubDir = "C:\Users\MVW\Documents\kimi\tasks\2026-09-19\07-51-28-c1e701cd\agent-hub"
+hubDir = "C:\Users\MVW\Agent-Hub"
 flag   = hubDir & "\.norestart"
 
 Do

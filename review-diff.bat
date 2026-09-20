@@ -6,7 +6,7 @@ rem  效果: 自动启动 Agent Hub(如未运行) -> hermes 提交当前
 rem        git diff -> 轮询 -> 输出裁决结论
 rem ============================================================
 setlocal
-set "HUB_DIR=C:\Users\MVW\Documents\kimi\tasks\2026-09-19\07-51-28-c1e701cd\agent-hub"
+set "HUB_DIR=C:\Users\MVW\Agent-Hub"
 set "HERMES=C:\Users\MVW\AppData\Local\hermes\bin\hermes.exe"
 
 rem --- 1. 确保 Agent Hub 服务在跑 --------------------------------
