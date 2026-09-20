@@ -80,6 +80,14 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             pass  # 列已存在
         c.execute("CREATE INDEX IF NOT EXISTS idx_runs_idem ON runs(idem_key)")
+        # 被审输入指纹（2026-09-20 P0-2）：与幂等键同为内容哈希，便于 SQL 直接查
+        # "哪几次 run 评的是同一份 diff"；对已存在的旧库做防御性加列。
+        # 注意：CREATE TABLE IF NOT EXISTS 对既有表不生效，旧库**只能**靠这条 ALTER 补列，
+        # 缺了它 save_run 会因 no such column 直接失败。
+        try:
+            c.execute("ALTER TABLE runs ADD COLUMN diff_sha1 TEXT")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
 
 
 def find_run_by_idem(idem_key: str) -> dict | None:
@@ -200,10 +208,46 @@ def _execute(event: CodeReviewEvent, diff: str | None, context: str | None) -> d
     return state
 
 
+def _channel_status() -> dict:
+    """各 Agent 直通通道的就绪状态（2026-09-20 P1-5）。
+
+    此前【专家会诊】提示一律写"hermes/WorkBuddy/KHA 直通通道在线"，但 WorkBuddy
+    在每个 run 都报未配置凭证、KHA 403 —— 模型据此向用户承诺了不存在的能力。
+
+    只做**廉价**判断（文件存在性 / 环境变量），**不做网络探测**：/health 是高频
+    探测端点（调用方 2 秒超时），任何可能阻塞的探测都会让 /health 超时，反而把
+    整个【专家会诊】能力误判为离线。语义：ready = 已具备调用条件，不是"已验证连通"。
+    """
+    try:
+        from acp_channel import hermes_available
+        hermes_ready = bool(hermes_available())
+        hermes_note = ("本机 hermes-agent 已安装（ACP 直通）" if hermes_ready
+                       else "未检测到 hermes-agent")
+    except Exception as e:  # noqa: BLE001
+        hermes_ready, hermes_note = False, f"探测失败: {e}"
+    # ready 三态：True=已确认可用；False=确定不可用（未配置）；None=已配置但未验证。
+    # 只有 hermes 是文件级确定性判断；WorkBuddy/KHA 需联网验证，本端点刻意不做
+    # （见上方超时理由），故一律报 None 而非 True —— 不把"配了 key"说成"能力可用"。
+    wb_configured = bool(os.getenv("WB_CLIENT_ID") and os.getenv("WB_CLIENT_SECRET"))
+    kha_configured = bool(os.getenv("MOONSHOT_API_KEY"))
+    return {
+        "hermes": {"ready": hermes_ready, "note": hermes_note},
+        "workbuddy": {
+            "ready": None if wb_configured else False,
+            "note": ("已配置开放平台凭证，未验证授权状态" if wb_configured
+                     else "未配置 WB_CLIENT_ID/WB_CLIENT_SECRET")},
+        "kha": {
+            "ready": None if kha_configured else False,
+            "note": ("已配置 MOONSHOT_API_KEY，未验证企业认证状态" if kha_configured
+                     else "未配置 MOONSHOT_API_KEY")},
+    }
+
+
 @app.get("/health")
 def health() -> dict:
     return {"ok": True, "mode": os.getenv("CR_MODE", "fake"),
-            "dry_run_post": DRY_RUN_POST, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+            "dry_run_post": DRY_RUN_POST, "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "channels": _channel_status()}
 
 
 @app.post("/events/gitlab")
