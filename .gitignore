@@ -10,6 +10,8 @@ __pycache__/
 # 运行时产物
 agent_hub.db
 agent-hub-connector.zip
+workspaces/
+traces/
 
 # 日志与临时文件
 *.log
