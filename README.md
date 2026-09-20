@@ -12,8 +12,14 @@ cd <本目录>
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements_agent_hub.txt
-python -m uvicorn agent_hub_platform:app --host 0.0.0.0 --port 8765
+python -m uvicorn agent_hub_platform:app --host 127.0.0.1 --port 8765
 ```
+
+> **默认绑回环，不要图省事改成 `0.0.0.0`。** REST 面（`/skills/install` 可落库第三方
+> 技能、`/compare/run` 会烧五家真实模型）只有在 `AGENT_HUB_API_KEY` 设好之后才有
+> 鉴权保护（中间件 2026-09-20 已提级到 app 级）。裸绑到局域网等于把这两个接口敞开。
+> 要远端部署：先设 `AGENT_HUB_API_KEY`，再放到反向代理/HTTPS 之后，并同步更新
+> `agent-hub-connector/mcp.json`。
 
 打开：<http://localhost:8765/ui>（或直接双击 `start_agent_hub.bat`，自动开浏览器）
 

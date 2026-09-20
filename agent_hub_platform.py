@@ -585,20 +585,33 @@ def skills_audit_rest(name: str) -> dict:
     return skillkit.audit_skill(name)
 
 
-# ---------------------------------------------------------------- MCP 端点
+# ---------------------------------------------------------------- 鉴权
 class TokenAuthMiddleware:
-    """MCP 端点的 Bearer Token 校验。
+    """API Key 校验（2026-09-20 P1-7：从只包 /mcp 提级到 app 级）。
 
     AGENT_HUB_API_KEY 设置后生效；未设置则不校验（仅本地开发）。
+
+    为什么提级：此前只包了 /mcp，REST 面的 /skills/install（可落库第三方技能）、
+    /skills/*（读第三方 SKILL.md 原文）与 /compare/run（烧五家真实模型）完全无鉴权。
+    路线图一旦按"迁远端 + 启 AGENT_HUB_API_KEY"走，这几条仍是敞口。
     """
+
+    # 豁免路径：调用方无法携带自定义凭据的场景（健康探测、浏览器控制台、
+    # OAuth 回调、API 文档）。按路径段边界匹配，避免 /uiXXX 之类被误豁免。
+    EXEMPT_PREFIXES = ("/health", "/ui", "/static", "/callback",
+                       "/docs", "/redoc", "/openapi.json")
 
     def __init__(self, app):
         self.app = app
 
+    def _exempt(self, path: str) -> bool:
+        return any(path == p or path.startswith(p + "/")
+                   for p in self.EXEMPT_PREFIXES)
+
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             expected = os.getenv("AGENT_HUB_API_KEY", "")
-            if expected:
+            if expected and not self._exempt(scope.get("path", "")):
                 headers = {k.decode().lower(): v.decode()
                            for k, v in scope.get("headers", [])}
                 if headers.get("authorization") != f"Bearer {expected}":
@@ -608,9 +621,13 @@ class TokenAuthMiddleware:
         await self.app(scope, receive, send)
 
 
+# app 级挂载：覆盖全部 REST 端点与 /mcp（原实现只包 /mcp，REST 面等于敞口）。
+app.add_middleware(TokenAuthMiddleware)
+
+
 from agent_hub_mcp import mcp as _mcp  # noqa: E402
 
-app.mount("/mcp", TokenAuthMiddleware(_mcp.streamable_http_app()))
+app.mount("/mcp", _mcp.streamable_http_app())
 
 
 # app.mount 不会执行子应用的 lifespan；MCP session manager 的任务组
