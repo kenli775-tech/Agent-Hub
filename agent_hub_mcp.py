@@ -396,7 +396,12 @@ def skill_install(keyword: str, auto: bool = False) -> dict:
     found = skillkit.search_market(keyword, top=5)
     if not found["ok"]:
         return found
-    cands = [c for c in (found.get("candidates") or []) if c.get("pkg") and c.get("skill")]
+    # cmd_search 返回嵌套结构且可能混入非 dict 条目，先扁平化再取字段
+    data = found.get("candidates") or []
+    if isinstance(data, dict):
+        data = data.get("candidates") or []
+    cands = [c for c in data
+             if isinstance(c, dict) and c.get("pkg") and c.get("skill")]
     if not cands:
         return {"ok": False, "error": "市场无匹配候选", "candidates": found.get("candidates")}
     best = cands[0]

@@ -378,6 +378,99 @@ def proposal_iterate(proposal_id: str, body: IterateIn) -> dict:
             "model_errors": state["model_errors"]}
 
 
+# ---------------------------------------------------------------- 归一技能层 REST
+# 2026-09-20：供 personal-agent（Smart Agent）等本机调用方走 plain HTTP 使用
+# 技能库。与 /mcp/ 下的同名工具共用 skillkit，行为一致（install 保持人工门）。
+class SkillInstallIn(BaseModel):
+    keyword: str
+    auto: bool = False
+
+
+def _flat_candidates(found: dict) -> list[dict]:
+    """统一候选列表提取：cmd_search 返回嵌套结构
+    {candidates: {keyword, total, candidates: [...]}}，且可能混入非 dict 条目。"""
+    data = found.get("candidates") or []
+    if isinstance(data, dict):
+        data = data.get("candidates") or []
+    return [c for c in data
+            if isinstance(c, dict) and c.get("pkg") and c.get("skill")]
+
+
+@app.get("/skills")
+def skills_rest() -> dict:
+    """列出 hub 本地技能库（名称/描述/触发词/来源）。"""
+    import skillkit
+
+    skills = skillkit.list_skills()
+    return {"count": len(skills),
+            "skills": [{"name": s.name, "description": s.description,
+                        "triggers": s.triggers, "source": s.source, "dir": s.dir}
+                       for s in skills]}
+
+
+@app.get("/skills/search")
+def skills_search_rest(keyword: str, top: int = 8) -> dict:
+    """技能市场搜索（只搜索不安装）。返回扁平候选列表。"""
+    import skillkit
+
+    found = skillkit.search_market(keyword, top=top)
+    if not found.get("ok"):
+        return found
+    return {"ok": True, "keyword": keyword,
+            "candidates": _flat_candidates(found)}
+
+
+@app.post("/skills/install")
+def skills_install_rest(body: SkillInstallIn) -> dict:
+    """安装链：搜索 → 取源码 → 安全预审 →（pass 且 auto 才）落库。
+
+    默认人工门：只出预审报告，不写入技能库。
+    """
+    import skillkit
+
+    found = skillkit.search_market(body.keyword, top=5)
+    if not found.get("ok"):
+        return found
+    cands = _flat_candidates(found)
+    if not cands:
+        return {"ok": False, "error": "市场无匹配候选"}
+    best = cands[0]
+    fetched = skillkit.fetch_skill(best["pkg"], best["skill"])
+    if not fetched.get("ok"):
+        return fetched
+    result = {"ok": True, "candidate": best, "staging_dir": fetched["dir"],
+              "audit": fetched["audit"], "installed": False}
+    if fetched["audit"]["verdict"] != "pass":
+        result["error"] = ("预审 %s，拒绝安装，等待人工拍板"
+                           % fetched["audit"]["verdict"])
+        return result
+    if not body.auto:
+        result["hint"] = "预审通过。确认安装请重试 auto=true"
+        return result
+    installed = skillkit.install_skill(fetched["dir"], auto=True)
+    result.update({"installed": installed["ok"], "install": installed})
+    return result
+
+
+@app.get("/skills/{name}")
+def skills_read_rest(name: str) -> dict:
+    """读取某技能 SKILL.md 全文。"""
+    import skillkit
+
+    data = skillkit.get_skill(name)
+    if "error" in data:
+        raise HTTPException(404, data["error"])
+    return data
+
+
+@app.get("/skills/{name}/audit")
+def skills_audit_rest(name: str) -> dict:
+    """对已安装技能跑确定性安全预审。"""
+    import skillkit
+
+    return skillkit.audit_skill(name)
+
+
 # ---------------------------------------------------------------- MCP 端点
 class TokenAuthMiddleware:
     """MCP 端点的 Bearer Token 校验。
