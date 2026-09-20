@@ -95,6 +95,13 @@ def _load_real_adapters() -> dict[str, ReviewAdapter]:
             adapters[name] = cls()
         except RuntimeError:
             continue  # 对应 key 未配置则跳过该 Agent
+    # Kimi Hosted Agents（L2 第四条直通通道）：平台托管 Agent，技能随行。
+    # 未开通企业认证时 adapter 构造抛 RuntimeError，这里跳过并留显式占位说明。
+    try:
+        from kha_channel import RealKimiHostedAdapter
+        adapters["kimi_hosted"] = RealKimiHostedAdapter()
+    except RuntimeError:
+        pass
     if not adapters:
         raise RuntimeError("CR_MODE=real 但没有可用模型 key（检查 .env）")
     # WorkBuddy：真实通道需要你按官方 OpenAPI 文档填入 client 凭证；
