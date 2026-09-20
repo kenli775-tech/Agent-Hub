@@ -74,6 +74,21 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT, actor TEXT, action TEXT, comment TEXT,
             post_status TEXT, created_at TEXT)""")
+        # 幂等键（2026-09-20）：同一份 diff 被重复提交时去重。对已存在的旧库做防御性加列。
+        try:
+            c.execute("ALTER TABLE runs ADD COLUMN idem_key TEXT")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
+        c.execute("CREATE INDEX IF NOT EXISTS idx_runs_idem ON runs(idem_key)")
+
+
+def find_run_by_idem(idem_key: str) -> dict | None:
+    """按幂等键找最近一次在库的 run（返回摘要，不含全量 state）。"""
+    with _db_lock, _conn() as c:
+        row = c.execute(
+            "SELECT run_id, status FROM runs WHERE idem_key=? "
+            "ORDER BY created_at DESC LIMIT 1", (idem_key,)).fetchone()
+    return dict(row) if row else None
 
 
 def save_run(state: dict) -> None:
@@ -83,12 +98,16 @@ def save_run(state: dict) -> None:
         "pending_human" if state.get("pending_human") else "resolved")
     with _db_lock, _conn() as c:
         c.execute(
-            "INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO runs "
+            "(run_id, provider, repo, mr_id, title, status, state_json, "
+            " created_at, updated_at, idem_key) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (state["run_id"], event.get("provider", "manual"),
              event.get("repo", ""), event.get("mr_id", ""),
              event.get("title", ""),
              status,
-             json.dumps(state, ensure_ascii=False), now, now),
+             json.dumps(state, ensure_ascii=False), now, now,
+             state.get("idempotency_key")),
         )
 
 
@@ -161,6 +180,9 @@ class CompareIn(BaseModel):
     title: str | None = None
     diff: str | None = None
     context: str | None = None
+    # 幂等键（2026-09-20）：客户端对同一份 diff+context 生成内容哈希，
+    # 重试/重复提交时服务端去重，返回首个 run，避免同 diff 被会诊多遍。
+    idempotency_key: str | None = None
 
 
 class DecisionIn(BaseModel):
@@ -211,16 +233,63 @@ async def github_event(request: Request) -> dict:
             "verdict": state["verdict"]}
 
 
+# 在途评审登记：idem_key → (threading.Event, run_id 或 None)。
+# compare_run 是同步阻塞 handler，uvicorn 在线程池里并发跑；后到请求等在 Event 上，
+# 首个请求完成后即可拿到同一个 run_id（2026-09-20 幂等去重）。
+_INFLIGHT: dict = {}
+
+
+def _run_summary(state: dict, dedup: bool = False) -> dict:
+    out = {"run_id": state["run_id"],
+           "status": state.get("status") or (
+               "pending_human" if state.get("pending_human") else "resolved"),
+           "verdict": state.get("verdict")}
+    if dedup:
+        out["deduplicated"] = True
+    return out
+
+
 @app.post("/compare/run")
 def compare_run(body: CompareIn) -> dict:
-    """手动触发一次 Compare（默认用内置样例 diff，便于演示）。"""
+    """手动触发一次 Compare（默认用内置样例 diff，便于演示）。
+
+    带 idempotency_key 时：在途 → 等首个完成返回同一 run；已在库 → 直接返回历史 run；
+    均未命中 → 正常执行并把键落库。
+    """
     from code_review_compare_mvp import SAMPLE_CONTEXT, SAMPLE_DIFF
+    idem = (body.idempotency_key or "").strip()[:64] or None
+
+    if idem:
+        with _db_lock:
+            inflight = _INFLIGHT.get(idem)
+        if inflight is not None:
+            done, first_run_id = inflight
+            done.wait(timeout=600)  # 与客户端超时同量级；超时则自己再跑一遍（兜底）
+            if first_run_id[0]:
+                state = get_run(first_run_id[0])
+                if state:
+                    return _run_summary(state, dedup=True)
+        else:
+            hit = find_run_by_idem(idem)
+            if hit:
+                state = get_run(hit["run_id"])
+                if state:
+                    return _run_summary(state, dedup=True)
+            with _db_lock:
+                _INFLIGHT[idem] = (threading.Event(), [None])
+
     event = CodeReviewEvent(provider="manual", repo="local/manual", mr_id="0",
                             title=(body.title or "手动提交的 diff 评审").strip())
     state = _execute(event, body.diff or SAMPLE_DIFF, body.context or SAMPLE_CONTEXT)
-    return {"run_id": state["run_id"],
-            "status": "pending_human" if state["pending_human"] else "resolved",
-            "verdict": state["verdict"]}
+    if idem:
+        state["idempotency_key"] = idem
+        save_run(state)  # _execute 内已 save 过一次，此处带键重存（INSERT OR REPLACE）
+        with _db_lock:
+            ent = _INFLIGHT.pop(idem, None)
+        if ent is not None:
+            ent[1][0] = state["run_id"]
+            ent[0].set()
+    return _run_summary(state)
 
 
 @app.get("/runs")
